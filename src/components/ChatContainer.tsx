@@ -13,6 +13,8 @@ export const ChatContainer: React.FC = () => {
     messages: [],
     isLoading: false,
     error: null,
+    sessionId: undefined,
+    lastResponseId: undefined,
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -62,10 +64,11 @@ export const ChatContainer: React.FC = () => {
     }));
 
     try {
-      // Send message to n8n webhook
+      // Send message to OpenAI Responses API
       const response = await chatService.sendMessage({
         message: messageContent,
         sessionId,
+        previousResponseId: chatState.lastResponseId, // Use last response ID for conversation continuity
       });
 
       // Update session ID if returned from server
@@ -79,12 +82,15 @@ export const ChatContainer: React.FC = () => {
         content: response.response,
         sender: "ai",
         timestamp: new Date(),
+        responseId: response.responseId, // Store the OpenAI response ID
       };
 
       setChatState((prev) => ({
         ...prev,
         messages: [...prev.messages, aiMessage],
         isLoading: false,
+        sessionId: response.sessionId,
+        lastResponseId: response.responseId, // Track the last response ID for conversation continuity
       }));
     } catch (error) {
       const errorMessage: Message = {

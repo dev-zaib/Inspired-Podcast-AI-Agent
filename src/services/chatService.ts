@@ -3,22 +3,32 @@ import axios from "axios";
 export interface ChatRequest {
   message: string;
   sessionId?: string;
+  previousResponseId?: string;
 }
 
 export interface ChatResponse {
   response: string;
   sessionId?: string;
+  responseId?: string;
+  status?: string;
 }
 
 export const chatService = {
   async sendMessage(request: ChatRequest): Promise<ChatResponse> {
     try {
-      // Call our internal API route instead of directly calling n8n
+      // Call our internal API route that uses OpenAI Responses API
+      const params: Record<string, string> = {
+        message: request.message,
+        sessionId: request.sessionId || `session-${Date.now()}`,
+      };
+
+      // Add previous response ID if available for conversation continuity
+      if (request.previousResponseId) {
+        params.previousResponseId = request.previousResponseId;
+      }
+
       const response = await axios.get("/api/chat", {
-        params: {
-          message: request.message,
-          sessionId: request.sessionId || `session-${Date.now()}`,
-        },
+        params,
         timeout: 30000,
       });
 
@@ -27,6 +37,8 @@ export const chatService = {
           response.data.output ||
           "I'm sorry, I couldn't generate a response. Please try again.",
         sessionId: response.data.sessionId || request.sessionId,
+        responseId: response.data.responseId,
+        status: response.data.status,
       };
     } catch (error) {
       console.error("Chat service error:", error);

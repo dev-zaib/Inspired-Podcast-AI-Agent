@@ -1,92 +1,156 @@
-// Server-side API route - keeps JWT token secret
+// Server-side API route - uses OpenAI Responses API
 import { NextRequest, NextResponse } from "next/server";
 
-const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL; // No NEXT_PUBLIC_ prefix
-const JWT_TOKEN = process.env.JWT_TOKEN; // No NEXT_PUBLIC_ prefix
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const OPENAI_PROMPT_ID = process.env.OPENAI_PROMPT_ID;
+const OPENAI_PROMPT_VERSION = process.env.OPENAI_PROMPT_VERSION;
+
+interface OpenAIResponseData {
+  id: string;
+  object: string;
+  created_at: number;
+  status: string;
+  error: null | {
+    code?: string;
+    message?: string;
+    type?: string;
+  };
+  output: Array<{
+    id: string;
+    type: string;
+    status: string;
+    content: Array<{
+      type: string;
+      text: string;
+    }>;
+    role: string;
+  }>;
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const message = searchParams.get("message");
   const sessionId = searchParams.get("sessionId");
+  const previousResponseId = searchParams.get("previousResponseId");
 
   if (!message) {
     return NextResponse.json({ error: "Message is required" }, { status: 400 });
   }
 
-  try {
-    const response = await fetch(
-      `${N8N_WEBHOOK_URL}?message=${encodeURIComponent(
-        message
-      )}&sessionId=${sessionId}`,
-      {
-        headers: {
-          Authorization: `Bearer ${JWT_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-      }
+  if (!OPENAI_API_KEY) {
+    return NextResponse.json(
+      { error: "OpenAI API key not configured" },
+      { status: 500 }
     );
+  }
 
-    // Check if the response is OK
-    if (!response.ok) {
-      const errorText = await response.text();
+  try {
+    // Prepare the request body
+    const requestBody: Record<string, unknown> = {
+      prompt: {
+        id: OPENAI_PROMPT_ID,
+        version: OPENAI_PROMPT_VERSION,
+      },
+      // Add the user message as input (not instructions)
+      input: [
+        {
+          type: "message",
+          content: [
+            {
+              type: "input_text",
+              text: message,
+            },
+          ],
+          role: "user",
+        },
+      ],
+    };
+
+    // If this is a follow-up message, reference the previous response
+    if (previousResponseId) {
+      requestBody.previous_response_id = previousResponseId;
+    }
+
+    const createResponse = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!createResponse.ok) {
+      const errorText = await createResponse.text();
       console.error(
-        "N8N Response Error:",
-        response.status,
-        response.statusText,
+        "OpenAI Create Response Error:",
+        createResponse.status,
+        createResponse.statusText,
         errorText
       );
 
-      if (response.status === 404) {
+      if (createResponse.status === 401) {
+        return NextResponse.json(
+          { error: "Invalid OpenAI API key" },
+          { status: 401 }
+        );
+      }
+
+      if (createResponse.status === 404) {
         return NextResponse.json(
           {
-            error:
-              "Webhook URL not found. Please check your n8n workflow is active and the URL is correct.",
+            error: "OpenAI prompt not found. Check your prompt ID and version.",
           },
           { status: 404 }
         );
       }
 
-      if (response.status === 401 || errorText.includes("invalid signature")) {
-        return NextResponse.json(
-          {
-            error:
-              "JWT authentication failed. Please check your token matches the n8n secret.",
-          },
-          { status: 401 }
-        );
-      }
-
       return NextResponse.json(
-        { error: `N8N API error (${response.status}): ${errorText}` },
-        { status: response.status }
+        { error: `OpenAI API error (${createResponse.status}): ${errorText}` },
+        { status: createResponse.status }
       );
     }
 
-    // Try to parse as JSON, fallback to text
-    const contentType = response.headers.get("content-type");
-    let data;
+    const responseData: OpenAIResponseData = await createResponse.json();
+    console.log("OpenAI Response:", JSON.stringify(responseData, null, 2));
 
-    try {
-      if (contentType && contentType.includes("application/json")) {
-        data = await response.json();
-      } else {
-        const text = await response.text();
-        console.log("N8N Response (text):", text);
-
-        // If it's plain text, wrap it in a JSON structure
-        data = { output: text, sessionId: sessionId };
-      }
-    } catch (parseError) {
-      console.error("Error parsing N8N response:", parseError);
-      const text = await response.text();
-      data = { output: text || "No response from AI", sessionId: sessionId };
+    // Check if the response has an error
+    if (responseData.error) {
+      console.error("OpenAI Response Error:", responseData.error);
+      return NextResponse.json(
+        {
+          error:
+            "OpenAI returned an error: " + JSON.stringify(responseData.error),
+        },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json(data);
+    // Extract the response text from the output
+    let responseText = "I'm sorry, I couldn't generate a response.";
+
+    if (responseData.output && responseData.output.length > 0) {
+      const firstOutput = responseData.output[0];
+      if (firstOutput.content && firstOutput.content.length > 0) {
+        const textContent = firstOutput.content.find(
+          (content) => content.type === "output_text"
+        );
+        if (textContent) {
+          responseText = textContent.text;
+        }
+      }
+    }
+
+    return NextResponse.json({
+      output: responseText,
+      sessionId: sessionId,
+      responseId: responseData.id,
+      status: responseData.status,
+    });
   } catch (error) {
-    console.error("N8N API Error:", error);
+    console.error("OpenAI API Error:", error);
     return NextResponse.json(
-      { error: "Failed to process request" },
+      { error: "Failed to process request with OpenAI" },
       { status: 500 }
     );
   }
