@@ -126,17 +126,25 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Extract the response text from the output
+    // Extract the response text from the outputs array.
+    // Some responses include tool calls (e.g. file_search_call) before the assistant message,
+    // so scan all outputs and return the first available output_text.
     let responseText = "I'm sorry, I couldn't generate a response.";
 
     if (responseData.output && responseData.output.length > 0) {
-      const firstOutput = responseData.output[0];
-      if (firstOutput.content && firstOutput.content.length > 0) {
-        const textContent = firstOutput.content.find(
+      for (const out of responseData.output) {
+        if (!out || !out.content || out.content.length === 0) continue;
+
+        const textContent = out.content.find(
           (content) => content.type === "output_text"
         );
-        if (textContent) {
+        if (
+          textContent &&
+          typeof textContent.text === "string" &&
+          textContent.text.trim().length > 0
+        ) {
           responseText = textContent.text;
+          break;
         }
       }
     }
