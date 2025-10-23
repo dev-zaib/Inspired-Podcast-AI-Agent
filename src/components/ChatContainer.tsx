@@ -159,8 +159,27 @@ export const ChatContainer: React.FC = () => {
               </div>
             </div>
 
-            {/* Status indicator */}
+            {/* Status indicator and Upload button */}
             <div className="flex items-center gap-4">
+              <a
+                href="/upload"
+                className="flex items-center gap-2 px-4 py-2 rounded-full bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2.5}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+                  />
+                </svg>
+                <span className="text-[13px] font-medium">Upload</span>
+              </a>
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 animate-scale-in">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse-subtle"></div>
                 <span className="text-[12px] font-medium text-green-700 dark:text-green-400">
